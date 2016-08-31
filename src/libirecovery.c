@@ -29,8 +29,10 @@
 #include <string.h>
 #include <inttypes.h>
 #include <ctype.h>
+#ifndef _MSC_VER
 #include <unistd.h>
 #include <sys/stat.h>
+#endif
 
 #ifndef USE_DUMMY
 #ifndef WIN32
@@ -56,19 +58,14 @@
 #endif
 #endif
 
-#ifdef WIN32
-#define IRECV_API __declspec( dllexport )
-#else
-#ifdef HAVE_FVISIBILITY
-#define IRECV_API __attribute__((visibility("default")))
-#else
-#define IRECV_API
-#endif
-#endif
-
 #include "libirecovery.h"
 #include "utils.h"
 #include "thread.h"
+
+#ifdef _MSC_VER
+#define fseeko _fseeki64
+#define ftello _ftelli64
+#endif
 
 struct irecv_client_private {
 	int debug;
@@ -2490,11 +2487,15 @@ IRECV_API irecv_error_t irecv_send_file(irecv_client_t client, const char* filen
 		return IRECV_E_FILE_NOT_FOUND;
 	}
 
+#ifdef WIN32
+	DWORD length = GetFileSize(file, NULL);
+#else
 	struct stat fst;
 	if (fstat(fileno(file), &fst) < 0) {
 		return IRECV_E_UNKNOWN_ERROR;
 	}
 	size_t length = fst.st_size;
+#endif
 
 	char* buffer = (char*)malloc(length);
 	if (buffer == NULL) {
