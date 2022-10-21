@@ -1,8 +1,8 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ(2.64)
-AC_INIT([libirecovery], [1.0.0], [https://github.com/libimobiledevice/libirecovery/issues],, [https://libimobiledevice.org])
+AC_PREREQ(2.68)
+AC_INIT([libirecovery], [1.0.1], [https://github.com/libimobiledevice/libirecovery/issues],, [https://libimobiledevice.org])
 AM_INIT_AUTOMAKE([dist-bzip2 no-dist-gzip check-news])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES])
 AC_CONFIG_SRCDIR([src/])
@@ -19,17 +19,21 @@ LIBIRECOVERY_SO_VERSION=3:0:0
 
 dnl Minimum package versions
 LIBUSB_VERSION=1.0.3
+LIMD_GLUE_VERSION=1.0.0
 
 AC_SUBST(LIBIRECOVERY_SO_VERSION)
+AC_SUBST(LIMD_GLUE_VERSION)
 
 # Checks for programs.
 AC_PROG_CC
-AC_PROG_CXX
+#AC_PROG_CXX
 AM_PROG_CC_C_O
-AC_PROG_LIBTOOL
+LT_INIT
+
+# Checks for libraries.
+PKG_CHECK_MODULES(limd_glue, libimobiledevice-glue-1.0 >= $LIMD_GLUE_VERSION)
 
 # Checks for header files.
-AC_HEADER_STDC
 AC_CHECK_HEADERS([stdint.h stdlib.h string.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
@@ -41,7 +45,7 @@ AC_TYPE_UINT32_T
 AC_TYPE_UINT8_T
 
 # Checks for library functions.
-AC_CHECK_FUNCS([strdup strerror strndup malloc realloc calloc])
+AC_CHECK_FUNCS([strdup strerror strcasecmp strndup malloc realloc calloc])
 
 # Checks for libraries.
 AC_CHECK_HEADERS([readline/readline.h], [],
@@ -59,26 +63,42 @@ case ${host_os} in
 				have_iokit=yes
 			], [])
 		], [])
-		AX_PTHREAD([], [AC_MSG_ERROR([pthread is required to build $PACKAGE])])
 	;;
 	mingw32*)
 		AC_MSG_RESULT([${host_os}])
-		GLOBAL_LDFLAGS+=" -static-libgcc -lkernel32 -lmsvcrt -lsetupapi"
+		GLOBAL_LDFLAGS+=" -static-libgcc -lkernel32 -lsetupapi"
 		win32=true
 	;;
 	cygwin*)
 		AC_MSG_RESULT([${host_os}])
 		CC=gcc-3
 		CFLAGS+=" -mno-cygwin"
-		GLOBAL_LDFLAGS+=" -static-libgcc -lkernel32 -lmsvcrt -lsetupapi"
+		GLOBAL_LDFLAGS+=" -static-libgcc -lkernel32 -lsetupapi"
 		win32=true
 	;;
 	*)
 		AC_MSG_RESULT([${host_os}])
-		AX_PTHREAD([], [AC_MSG_ERROR([pthread is required to build $PACKAGE])])
 	;;
 esac
 AM_CONDITIONAL(WIN32, test x$win32 = xtrue)
+
+# Check if the C compiler supports __attribute__((constructor))
+AC_CACHE_CHECK([wether the C compiler supports constructor/destructor attributes],
+  ac_cv_attribute_constructor, [
+  ac_cv_attribute_constructor=no
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
+    [[
+      static void __attribute__((constructor)) test_constructor(void) {
+      }
+      static void __attribute__((destructor)) test_destructor(void) {
+      }
+    ]], [])],
+    [ac_cv_attribute_constructor=yes]
+  )]
+)
+if test "$ac_cv_attribute_constructor" = "yes"; then
+  AC_DEFINE(HAVE_ATTRIBUTE_CONSTRUCTOR, 1, [Define if the C compiler supports constructor/destructor attributes])
+fi
 
 AC_ARG_WITH([dummy],
 	[AS_HELP_STRING([--with-dummy], [Use no USB driver at all [default=no]. This is only useful if you just want to query the device list by product type or hardware model. All other operations are no-ops or will return IRECV_E_UNSUPPORTED.])],
@@ -112,8 +132,7 @@ AS_IF([test "x$with_dummy" = "xyes"], [
 	])
 ])
 
-AS_COMPILER_FLAGS(GLOBAL_CFLAGS, "-Wall -Wextra -Wmissing-declarations -Wredundant-decls -Wshadow -Wpointer-arith -Wwrite-strings -Wswitch-default -Wno-unused-parameter -fvisibility=hidden $PTHREAD_CFLAGS")
-GLOBAL_LDFLAGS+=" $PTHREAD_LIBS"
+AS_COMPILER_FLAGS(GLOBAL_CFLAGS, "-Wall -Wextra -Wmissing-declarations -Wredundant-decls -Wshadow -Wpointer-arith -Wwrite-strings -Wswitch-default -Wno-unused-parameter -fvisibility=hidden")
 AC_SUBST(GLOBAL_CFLAGS)
 AC_SUBST(GLOBAL_LDFLAGS)
 
@@ -180,7 +199,7 @@ AM_CONDITIONAL(WITH_UDEV, test "x$with_udev" = "xyes")
 
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])])
 
-AC_OUTPUT([
+AC_CONFIG_FILES([
 Makefile
 src/Makefile
 src/libirecovery-1.0.pc
@@ -188,6 +207,7 @@ include/Makefile
 tools/Makefile
 udev/Makefile
 ])
+AC_OUTPUT
 
 echo "
 Configuration for $PACKAGE $VERSION:

@@ -3,7 +3,7 @@
  * Communication to iBoot/iBSS on Apple iOS devices via USB
  *
  * Copyright (c) 2011-2020 Nikias Bassen <nikias@gmx.li>
- * Copyright (c) 2012-2015 Martin Szulecki <martin.szulecki@libimobiledevice.org>
+ * Copyright (c) 2012-2020 Martin Szulecki <martin.szulecki@libimobiledevice.org>
  * Copyright (c) 2010 Chronic-Dev Team
  * Copyright (c) 2010 Joshua Hill
  * Copyright (c) 2008-2011 Nicolas Haunold
@@ -34,11 +34,13 @@
 #include <sys/stat.h>
 #endif
 
+#include <libimobiledevice-glue/collection.h>
+#include <libimobiledevice-glue/thread.h>
+
 #ifndef USE_DUMMY
 #ifndef WIN32
 #ifndef HAVE_IOKIT
 #include <libusb.h>
-#include <pthread.h>
 #if (defined(LIBUSB_API_VERSION) && (LIBUSB_API_VERSION >= 0x01000102)) || (defined(LIBUSBX_API_VERSION) && (LIBUSBX_API_VERSION >= 0x01000102))
 #define HAVE_LIBUSB_HOTPLUG_API 1
 #endif
@@ -46,7 +48,6 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/usb/IOUSBLib.h>
 #include <IOKit/IOCFPlugIn.h>
-#include <pthread.h>
 #endif
 #else
 #define WIN32_LEAN_AND_MEAN
@@ -59,8 +60,6 @@
 #endif
 
 #include "libirecovery.h"
-#include "utils.h"
-#include "thread.h"
 
 #ifdef _MSC_VER
 #define fseeko _fseeki64
@@ -134,8 +133,8 @@ static struct irecv_device irecv_devices[] = {
 	{ "iPhone8,1",   "n71map",   0x04, 0x8003, "iPhone 6s" },
 	{ "iPhone8,2",   "n66ap",    0x06, 0x8000, "iPhone 6s Plus" },
 	{ "iPhone8,2",   "n66map",   0x06, 0x8003, "iPhone 6s Plus" },
-	{ "iPhone8,4",   "n69ap",    0x02, 0x8003, "iPhone SE" },
-	{ "iPhone8,4",   "n69uap",   0x02, 0x8000, "iPhone SE" },
+	{ "iPhone8,4",   "n69ap",    0x02, 0x8003, "iPhone SE (1st gen)" },
+	{ "iPhone8,4",   "n69uap",   0x02, 0x8000, "iPhone SE (1st gen)" },
 	{ "iPhone9,1",   "d10ap",    0x08, 0x8010, "iPhone 7 (Global)" },
 	{ "iPhone9,2",   "d11ap",    0x0a, 0x8010, "iPhone 7 Plus (Global)" },
 	{ "iPhone9,3",   "d101ap",   0x0c, 0x8010, "iPhone 7 (GSM)" },
@@ -153,7 +152,20 @@ static struct irecv_device irecv_devices[] = {
 	{ "iPhone12,1",  "n104ap",   0x04, 0x8030, "iPhone 11" },
 	{ "iPhone12,3",  "d421ap",   0x06, 0x8030, "iPhone 11 Pro" },
 	{ "iPhone12,5",  "d431ap",   0x02, 0x8030, "iPhone 11 Pro Max" },
-	{ "iPhone12,8",  "d79ap",    0x10, 0x8030, "iPhone SE (2020)" },
+	{ "iPhone12,8",  "d79ap",    0x10, 0x8030, "iPhone SE (2nd gen)" },
+	{ "iPhone13,1",  "d52gap",   0x0A, 0x8101, "iPhone 12 mini" },
+	{ "iPhone13,2",  "d53gap",   0x0C, 0x8101, "iPhone 12" },
+	{ "iPhone13,3",  "d53pap",   0x0E, 0x8101, "iPhone 12 Pro" },
+	{ "iPhone13,4",  "d54pap",   0x08, 0x8101, "iPhone 12 Pro Max" },
+	{ "iPhone14,2",  "d63ap",    0x0C, 0x8110, "iPhone 13 Pro" },
+	{ "iPhone14,3",  "d64ap",    0x0E, 0x8110, "iPhone 13 Pro Max" },
+	{ "iPhone14,4",  "d16ap",    0x08, 0x8110, "iPhone 13 mini" },
+	{ "iPhone14,5",  "d17ap",    0x0A, 0x8110, "iPhone 13" },
+	{ "iPhone14,6",  "d49ap",    0x10, 0x8110, "iPhone SE (3rd gen)" },
+	{ "iPhone14,7",	 "d27ap",    0x18, 0x8110, "iPhone 14" },
+	{ "iPhone14,8",	 "d28ap",    0x1A, 0x8110, "iPhone 14 Plus" },
+	{ "iPhone15,2",	 "d73ap",    0x0C, 0x8120, "iPhone 14 Pro" },
+	{ "iPhone15,3",	 "d74ap",    0x0E, 0x8120, "iPhone 14 Pro Max" },
 	/* iPod */
 	{ "iPod1,1",     "n45ap",    0x02, 0x8900, "iPod Touch (1st gen)" },
 	{ "iPod2,1",     "n72ap",    0x00, 0x8720, "iPod Touch (2nd gen)" },
@@ -168,65 +180,153 @@ static struct irecv_device irecv_devices[] = {
 	{ "iPad2,2",     "k94ap",    0x06, 0x8940, "iPad 2 (GSM)" },
 	{ "iPad2,3",     "k95ap",    0x02, 0x8940, "iPad 2 (CDMA)" },
 	{ "iPad2,4",     "k93aap",   0x06, 0x8942, "iPad 2 (WiFi) R2 2012" },
-	{ "iPad2,5",     "p105ap",   0x0a, 0x8942, "iPad Mini (WiFi)" },
-	{ "iPad2,6",     "p106ap",   0x0c, 0x8942, "iPad Mini (GSM)" },
-	{ "iPad2,7",     "p107ap",   0x0e, 0x8942, "iPad Mini (Global)" },
-	{ "iPad3,1",     "j1ap",     0x00, 0x8945, "iPad 3 (WiFi)" },
-	{ "iPad3,2",     "j2ap",     0x02, 0x8945, "iPad 3 (CDMA)" },
-	{ "iPad3,3",     "j2aap",    0x04, 0x8945, "iPad 3 (GSM)" },
-	{ "iPad3,4",     "p101ap",   0x00, 0x8955, "iPad 4 (WiFi)" },
-	{ "iPad3,5",     "p102ap",   0x02, 0x8955, "iPad 4 (GSM)" },
-	{ "iPad3,6",     "p103ap",   0x04, 0x8955, "iPad 4 (Global)" },
+	{ "iPad2,5",     "p105ap",   0x0a, 0x8942, "iPad mini (WiFi)" },
+	{ "iPad2,6",     "p106ap",   0x0c, 0x8942, "iPad mini (GSM)" },
+	{ "iPad2,7",     "p107ap",   0x0e, 0x8942, "iPad mini (Global)" },
+	{ "iPad3,1",     "j1ap",     0x00, 0x8945, "iPad (3rd gen, WiFi)" },
+	{ "iPad3,2",     "j2ap",     0x02, 0x8945, "iPad (3rd gen, CDMA)" },
+	{ "iPad3,3",     "j2aap",    0x04, 0x8945, "iPad (3rd gen, GSM)" },
+	{ "iPad3,4",     "p101ap",   0x00, 0x8955, "iPad (4th gen, WiFi)" },
+	{ "iPad3,5",     "p102ap",   0x02, 0x8955, "iPad (4th gen, GSM)" },
+	{ "iPad3,6",     "p103ap",   0x04, 0x8955, "iPad (4th gen, Global)" },
 	{ "iPad4,1",     "j71ap",    0x10, 0x8960, "iPad Air (WiFi)" },
 	{ "iPad4,2",     "j72ap",    0x12, 0x8960, "iPad Air (Cellular)" },
-	{ "iPad4,4",     "j85ap",    0x0a, 0x8960, "iPad Mini 2 (WiFi)" },
-	{ "iPad4,5",     "j86ap",    0x0c, 0x8960, "iPad Mini 2 (Cellular)" },
-	{ "iPad4,6",     "j87ap",    0x0e, 0x8960, "iPad Mini 2 (China)" },
-	{ "iPad4,7",     "j85map",   0x32, 0x8960, "iPad Mini 3 (WiFi)" },
-	{ "iPad4,8",     "j86map",   0x34, 0x8960, "iPad Mini 3 (Cellular)" },
-	{ "iPad4,9",     "j87map",   0x36, 0x8960, "iPad Mini 3 (China)" },
-	{ "iPad5,1",     "j96ap",    0x08, 0x7000, "iPad Mini 4 (WiFi)" },
-	{ "iPad5,2",     "j97ap",    0x0A, 0x7000, "iPad Mini 4 (Cellular)" },
+	{ "iPad4,3",     "j73ap",    0x14, 0x8960, "iPad Air (China)" },
+	{ "iPad4,4",     "j85ap",    0x0a, 0x8960, "iPad mini 2 (WiFi)" },
+	{ "iPad4,5",     "j86ap",    0x0c, 0x8960, "iPad mini 2 (Cellular)" },
+	{ "iPad4,6",     "j87ap",    0x0e, 0x8960, "iPad mini 2 (China)" },
+	{ "iPad4,7",     "j85map",   0x32, 0x8960, "iPad mini 3 (WiFi)" },
+	{ "iPad4,8",     "j86map",   0x34, 0x8960, "iPad mini 3 (Cellular)" },
+	{ "iPad4,9",     "j87map",   0x36, 0x8960, "iPad mini 3 (China)" },
+	{ "iPad5,1",     "j96ap",    0x08, 0x7000, "iPad mini 4 (WiFi)" },
+	{ "iPad5,2",     "j97ap",    0x0A, 0x7000, "iPad mini 4 (Cellular)" },
 	{ "iPad5,3",     "j81ap",    0x06, 0x7001, "iPad Air 2 (WiFi)" },
 	{ "iPad5,4",     "j82ap",    0x02, 0x7001, "iPad Air 2 (Cellular)" },
-	{ "iPad6,3",     "j127ap",   0x08, 0x8001, "iPad Pro 9.7in (WiFi)" },
-	{ "iPad6,4",     "j128ap",   0x0a, 0x8001, "iPad Pro 9.7in (Cellular)" },
-	{ "iPad6,7",     "j98aap",   0x10, 0x8001, "iPad Pro 12.9in (WiFi)" },
-	{ "iPad6,8",     "j99aap",   0x12, 0x8001, "iPad Pro 12.9in (Cellular)" },
-	{ "iPad6,11",    "j71sap",   0x10, 0x8000, "iPad 5 (WiFi)" },
-	{ "iPad6,11",    "j71tap",   0x10, 0x8003, "iPad 5 (WiFi)" },
-	{ "iPad6,12",    "j72sap",   0x12, 0x8000, "iPad 5 (Cellular)" },
-	{ "iPad6,12",    "j72tap",   0x12, 0x8003, "iPad 5 (Cellular)" },
-	{ "iPad7,1",     "j120ap",   0x0C, 0x8011, "iPad Pro 2 12.9in (WiFi)" },
-	{ "iPad7,2",     "j121ap",   0x0E, 0x8011, "iPad Pro 2 12.9in (Cellular)" },
-	{ "iPad7,3",     "j207ap",   0x04, 0x8011, "iPad Pro 10.5in (WiFi)" },
-	{ "iPad7,4",     "j208ap",   0x06, 0x8011, "iPad Pro 10.5in (Cellular)" },
-	{ "iPad7,5",     "j71bap",   0x18, 0x8010, "iPad 6 (WiFi)" },
-	{ "iPad7,6",     "j72bap",   0x1A, 0x8010, "iPad 6 (Cellular)" },
-	{ "iPad7,11",    "j172ap",   0x1E, 0x8010, "iPad 7 (WiFi)" },
-	{ "iPad7,12",    "j171ap",   0x1C, 0x8010, "iPad 7 (Cellular)" },
-	{ "iPad8,1",     "j317ap",   0x0C, 0x8027, "iPad Pro 3 11in (WiFi)" },
-	{ "iPad8,2",     "j317xap",  0x1C, 0x8027, "iPad Pro 3 11in (WiFi, 1TB)" },
-	{ "iPad8,3",     "j318ap",   0x0E, 0x8027, "iPad Pro 3 11in (Cellular)" },
-	{ "iPad8,4",     "j318xap",  0x1E, 0x8027, "iPad Pro 3 11in (Cellular, 1TB)" },
-	{ "iPad8,5",     "j320ap",   0x08, 0x8027, "iPad Pro 3 12.9in (WiFi)" },
-	{ "iPad8,6",     "j320xap",  0x18, 0x8027, "iPad Pro 3 12.9in (WiFi, 1TB)" },
-	{ "iPad8,7",     "j321ap",   0x0A, 0x8027, "iPad Pro 3 12.9in (Cellular)" },
-	{ "iPad8,8",     "j321xap",  0x1A, 0x8027, "iPad Pro 3 12.9in (Cellular, 1TB)" },
-	{ "iPad8,9",     "j417ap",   0x3C, 0x8027, "iPad Pro 4 11in (WiFi)" },
-	{ "iPad8,10",    "j418ap",   0x3E, 0x8027, "iPad Pro 4 11in (Cellular)" },
-	{ "iPad8,11",    "j420ap",   0x38, 0x8027, "iPad Pro 4 12.9in (WiFi)" },
-	{ "iPad8,12",    "j421ap",   0x3A, 0x8027, "iPad Pro 4 12.9in (Cellular)" },
-	{ "iPad11,1",    "j210ap",   0x14, 0x8020, "iPad Mini 5 (WiFi)" },
-	{ "iPad11,2",    "j211ap",   0x16, 0x8020, "iPad Mini 5 (Cellular)" },
-	{ "iPad11,3",    "j217ap",   0x1C, 0x8020, "iPad Air 3 (WiFi)" },
-	{ "iPad11,4",    "j218ap",   0x1E, 0x8020, "iPad Air 3 (Celluar)" },
+	{ "iPad6,3",     "j127ap",   0x08, 0x8001, "iPad Pro 9.7-inch (WiFi)" },
+	{ "iPad6,4",     "j128ap",   0x0a, 0x8001, "iPad Pro 9.7-inch (Cellular)" },
+	{ "iPad6,7",     "j98aap",   0x10, 0x8001, "iPad Pro 12.9-inch (1st gen, WiFi)" },
+	{ "iPad6,8",     "j99aap",   0x12, 0x8001, "iPad Pro 12.9-inch (1st gen, Cellular)" },
+	{ "iPad6,11",    "j71sap",   0x10, 0x8000, "iPad (5th gen, WiFi)" },
+	{ "iPad6,11",    "j71tap",   0x10, 0x8003, "iPad (5th gen, WiFi)" },
+	{ "iPad6,12",    "j72sap",   0x12, 0x8000, "iPad (5th gen, Cellular)" },
+	{ "iPad6,12",    "j72tap",   0x12, 0x8003, "iPad (5th gen, Cellular)" },
+	{ "iPad7,1",     "j120ap",   0x0C, 0x8011, "iPad Pro 12.9-inch (2nd gen, WiFi)" },
+	{ "iPad7,2",     "j121ap",   0x0E, 0x8011, "iPad Pro 12.9-inch (2nd gen, Cellular)" },
+	{ "iPad7,3",     "j207ap",   0x04, 0x8011, "iPad Pro 10.5-inch (WiFi)" },
+	{ "iPad7,4",     "j208ap",   0x06, 0x8011, "iPad Pro 10.5-inch (Cellular)" },
+	{ "iPad7,5",     "j71bap",   0x18, 0x8010, "iPad (6th gen, WiFi)" },
+	{ "iPad7,6",     "j72bap",   0x1A, 0x8010, "iPad (6th gen, Cellular)" },
+	{ "iPad7,11",    "j171ap",   0x1C, 0x8010, "iPad (7th gen, WiFi)" },
+	{ "iPad7,12",    "j172ap",   0x1E, 0x8010, "iPad (7th gen, Cellular)" },
+	{ "iPad8,1",     "j317ap",   0x0C, 0x8027, "iPad Pro 11-inch (1st gen, WiFi)" },
+	{ "iPad8,2",     "j317xap",  0x1C, 0x8027, "iPad Pro 11-inch (1st gen, WiFi, 1TB)" },
+	{ "iPad8,3",     "j318ap",   0x0E, 0x8027, "iPad Pro 11-inch (1st gen, Cellular)" },
+	{ "iPad8,4",     "j318xap",  0x1E, 0x8027, "iPad Pro 11-inch (1st gen, Cellular, 1TB)" },
+	{ "iPad8,5",     "j320ap",   0x08, 0x8027, "iPad Pro 12.9-inch (3rd gen, WiFi)" },
+	{ "iPad8,6",     "j320xap",  0x18, 0x8027, "iPad Pro 12.9-inch (3rd gen, WiFi, 1TB)" },
+	{ "iPad8,7",     "j321ap",   0x0A, 0x8027, "iPad Pro 12.9-inch (3rd gen, Cellular)" },
+	{ "iPad8,8",     "j321xap",  0x1A, 0x8027, "iPad Pro 12.9-inch (3rd gen, Cellular, 1TB)" },
+	{ "iPad8,9",     "j417ap",   0x3C, 0x8027, "iPad Pro 11-inch (2nd gen, WiFi)" },
+	{ "iPad8,10",    "j418ap",   0x3E, 0x8027, "iPad Pro 11-inch (2nd gen, Cellular)" },
+	{ "iPad8,11",    "j420ap",   0x38, 0x8027, "iPad Pro 12.9-inch (4th gen, WiFi)" },
+	{ "iPad8,12",    "j421ap",   0x3A, 0x8027, "iPad Pro 12.9-inch (4th gen, Cellular)" },
+	{ "iPad11,1",    "j210ap",   0x14, 0x8020, "iPad mini (5th gen, WiFi)" },
+	{ "iPad11,2",    "j211ap",   0x16, 0x8020, "iPad mini (5th gen, Cellular)" },
+	{ "iPad11,3",    "j217ap",   0x1C, 0x8020, "iPad Air (3rd gen, WiFi)" },
+	{ "iPad11,4",    "j218ap",   0x1E, 0x8020, "iPad Air (3rd gen, Cellular)" },
+	{ "iPad11,6",    "j171aap",  0x24, 0x8020, "iPad (8th gen, WiFi)" },
+	{ "iPad11,7",    "j172aap",  0x26, 0x8020, "iPad (8th gen, Cellular)" },
+	{ "iPad12,1",    "j181ap",   0x18, 0x8030, "iPad (9th gen, WiFi)" },
+	{ "iPad12,2",    "j182ap",   0x1A, 0x8030, "iPad (9th gen, Cellular)" },
+	{ "iPad13,1",    "j307ap",   0x04, 0x8101, "iPad Air (4th gen, WiFi)" },
+	{ "iPad13,2",    "j308ap",   0x06, 0x8101, "iPad Air (4th gen, Cellular)" },
+	{ "iPad13,4",    "j517ap",   0x08, 0x8103, "iPad Pro 11-inch (3rd gen, WiFi)" },
+	{ "iPad13,5",    "j517xap",  0x0A, 0x8103, "iPad Pro 11-inch (3rd gen, WiFi, 2TB)" },
+	{ "iPad13,6",    "j518ap",   0x0C, 0x8103, "iPad Pro 11-inch (3rd gen, Cellular)" },
+	{ "iPad13,7",    "j518xap",  0x0E, 0x8103, "iPad Pro 11-inch (3rd gen, Cellular, 2TB)" },
+	{ "iPad13,8",    "j522ap",   0x18, 0x8103, "iPad Pro 12.9-inch (5th gen, WiFi)" },
+	{ "iPad13,9",    "j522xap",  0x1A, 0x8103, "iPad Pro 12.9-inch (5th gen, WiFi, 2TB)" },
+	{ "iPad13,10",   "j523ap",   0x1C, 0x8103, "iPad Pro 12.9-inch (5th gen, Cellular)" },
+	{ "iPad13,11",   "j523xap",  0x1E, 0x8103, "iPad Pro 12.9-inch (5th gen, Cellular, 2TB)" },
+	{ "iPad13,16",   "j407ap",   0x10, 0x8103, "iPad Air (5th gen, WiFi)" },
+	{ "iPad13,17",   "j408ap",   0x12, 0x8103, "iPad Air (5th gen, Cellular)" },
+	{ "iPad13,18",   "j271ap",   0x14, 0x8101, "iPad (10th gen, WiFi)" },
+	{ "iPad13,19",   "j272ap",   0x16, 0x8101, "iPad (10th gen, Cellular)" },
+	{ "iPad14,1",    "j310ap",   0x04, 0x8110, "iPad mini (6th gen, WiFi)" },
+	{ "iPad14,2",    "j311ap",   0x06, 0x8110, "iPad mini (6th gen, Cellular)" },
+	{ "iPad14,3",    "j617ap",   0x08, 0x8112, "iPad Pro 11-inch (4th gen, WiFi)" },
+	{ "iPad14,4",    "j618ap",   0x0A, 0x8112, "iPad Pro 11-inch (4th gen, Cellular)" },
+	{ "iPad14,5",    "j620ap",   0x0C, 0x8112, "iPad Pro 12.9-inch (6th gen, WiFi)" },
+	{ "iPad14,6",    "j621ap",   0x0E, 0x8112, "iPad Pro 12.9-inch (6th gen, Cellular)" },
 	/* Apple TV */
 	{ "AppleTV2,1",  "k66ap",    0x10, 0x8930, "Apple TV 2" },
 	{ "AppleTV3,1",  "j33ap",    0x08, 0x8942, "Apple TV 3" },
 	{ "AppleTV3,2",  "j33iap",   0x00, 0x8947, "Apple TV 3 (2013)" },
 	{ "AppleTV5,3",  "j42dap",   0x34, 0x7000, "Apple TV 4" },
 	{ "AppleTV6,2",  "j105aap",  0x02, 0x8011, "Apple TV 4K" },
+	{ "AppleTV11,1", "j305ap",   0x08, 0x8020, "Apple TV 4K (2nd gen)" },
+	{ "AppleTV14,1", "j255ap",   0x02, 0x8110, "Apple TV 4K (3rd gen)" },
+	/* HomePod */
+	{ "AudioAccessory1,1",  "b238aap",  0x38, 0x7000, "HomePod" },
+	{ "AudioAccessory1,2",  "b238ap",   0x1A, 0x7000, "HomePod" },
+	{ "AudioAccessory5,1",  "b520ap",   0x22, 0x8006, "HomePod mini" },
+	/* Apple Watch */
+	{ "Watch1,1",    "n27aap",   0x02, 0x7002, "Apple Watch 38mm (1st gen)" },
+	{ "Watch1,2",    "n28aap",   0x04, 0x7002, "Apple Watch 42mm (1st gen)" },
+	{ "Watch2,6",    "n27dap",  0x02, 0x8002, "Apple Watch Series 1 (38mm)" },
+	{ "Watch2,7",    "n28dap",  0x04, 0x8002, "Apple Watch Series 1 (42mm)" },
+	{ "Watch2,3",    "n74ap",   0x0C, 0x8002, "Apple Watch Series 2 (38mm)" },
+	{ "Watch2,4",    "n75ap",   0x0E, 0x8002, "Apple Watch Series 2 (42mm)" },
+	{ "Watch3,1",    "n111sap", 0x1C, 0x8004, "Apple Watch Series 3 (38mm Cellular)" },
+	{ "Watch3,2",    "n111bap", 0x1E, 0x8004, "Apple Watch Series 3 (42mm Cellular)" },
+	{ "Watch3,3",    "n121sap", 0x18, 0x8004, "Apple Watch Series 3 (38mm)" },
+	{ "Watch3,4",    "n121bap", 0x1A, 0x8004, "Apple Watch Series 3 (42mm)" },
+	{ "Watch4,1",    "n131sap", 0x08, 0x8006, "Apple Watch Series 4 (40mm)" },
+	{ "Watch4,2",    "n131bap", 0x0A, 0x8006, "Apple Watch Series 4 (44mm)" },
+	{ "Watch4,3",    "n141sap", 0x0C, 0x8006, "Apple Watch Series 4 (40mm Cellular)" },
+	{ "Watch4,4",    "n141bap", 0x0E, 0x8006, "Apple Watch Series 4 (44mm Cellular)" },
+	{ "Watch5,1",    "n144sap", 0x10, 0x8006, "Apple Watch Series 5 (40mm)" },
+	{ "Watch5,2",    "n144bap", 0x12, 0x8006, "Apple Watch Series 5 (44mm)" },
+	{ "Watch5,3",    "n146sap", 0x14, 0x8006, "Apple Watch Series 5 (40mm Cellular)" },
+	{ "Watch5,4",    "n146bap", 0x16, 0x8006, "Apple Watch Series 5 (44mm Cellular)" },
+	{ "Watch5,9",    "n140sap", 0x28, 0x8006, "Apple Watch SE (40mm)" },
+	{ "Watch5,10",   "n140bap", 0x2A, 0x8006, "Apple Watch SE (44mm)" },
+	{ "Watch5,11",   "n142sap", 0x2C, 0x8006, "Apple Watch SE (40mm Cellular)" },
+	{ "Watch5,12",   "n142bap", 0x2E, 0x8006, "Apple Watch SE (44mm Cellular)" },
+	{ "Watch6,1",    "n157sap", 0x08, 0x8301, "Apple Watch Series 6 (40mm)" },
+	{ "Watch6,2",    "n157bap", 0x0A, 0x8301, "Apple Watch Series 6 (44mm)" },
+	{ "Watch6,3",    "n158sap", 0x0C, 0x8301, "Apple Watch Series 6 (40mm Cellular)" },
+	{ "Watch6,4",    "n158bap", 0x0E, 0x8301, "Apple Watch Series 6 (44mm Cellular)" },
+	{ "Watch6,6",    "n187sap", 0x10, 0x8301, "Apple Watch Series 7 (41mm)" },
+	{ "Watch6,7",    "n187bap", 0x12, 0x8301, "Apple Watch Series 7 (45mm)" },
+	{ "Watch6,8",    "n188sap", 0x14, 0x8301, "Apple Watch Series 7 (41mm Cellular)" },
+	{ "Watch6,9",    "n188bap", 0x16, 0x8301, "Apple Watch Series 7 (45mm Cellular)" },
+	{ "Watch6,10",   "n143sap", 0x28, 0x8301, "Apple Watch SE 2 (40mm)" },
+	{ "Watch6,11",   "n143bap", 0x2A, 0x8301, "Apple Watch SE 2 (44mm)" },
+	{ "Watch6,12",   "n149sap", 0x2C, 0x8301, "Apple Watch SE 2 (40mm Cellular)" },
+	{ "Watch6,13",   "n149bap", 0x2E, 0x8301, "Apple Watch SE 2 (44mm Cellular)" },
+	{ "Watch6,14",   "n197sap", 0x30, 0x8301, "Apple Watch Series 8 (41mm)" },
+	{ "Watch6,15",   "n197bap", 0x32, 0x8301, "Apple Watch Series 8 (45mm)" },
+	{ "Watch6,16",   "n198sap", 0x34, 0x8301, "Apple Watch Series 8 (41mm Cellular)" },
+	{ "Watch6,17",   "n198bap", 0x36, 0x8301, "Apple Watch Series 8 (45mm Cellular)" },
+	{ "Watch6,18",   "n199ap",  0x26, 0x8301, "Apple Watch Ultra" },
+	/* Apple Silicon Macs */
+	{ "ADP3,2",         "j273aap", 0x42, 0x8027, "Developer Transition Kit (2020)" },
+	{ "Macmini9,1",	    "j274ap",  0x22, 0x8103, "Mac mini (M1, 2020)" },
+	{ "MacBookPro17,1", "j293ap",  0x24, 0x8103, "MacBook Pro (M1, 13-inch, 2020)" },
+	{ "MacBookPro18,1", "j316sap", 0x0A, 0x6000, "MacBook Pro (M1 Pro, 16-inch, 2021)" },
+	{ "MacBookPro18,2", "j316cap", 0x0A, 0x6001, "MacBook Pro (M1 Max, 16-inch, 2021)" },
+	{ "MacBookPro18,3", "j314sap", 0x08, 0x6000, "MacBook Pro (M1 Pro, 14-inch, 2021)" },
+	{ "MacBookPro18,4", "j314cap", 0x08, 0x6001, "MacBook Pro (M1 Max, 14-inch, 2021)" },
+	{ "MacBookAir10,1", "j313ap",  0x26, 0x8103, "MacBook Air (M1, 2020)" },
+	{ "iMac21,1",       "j456ap",  0x28, 0x8103, "iMac 24-inch (M1, Two Ports, 2021)" },
+	{ "iMac21,2",       "j457ap",  0x2A, 0x8103, "iMac 24-inch (M1, Four Ports, 2021)" },
+	{ "Mac13,1",        "j375cap", 0x04, 0x6001, "Mac Studio (M1 Max, 2022)" },
+	{ "Mac13,2",        "j375dap", 0x0C, 0x6002, "Mac Studio (M1 Ultra, 2022)" },
+	{ "Mac14,2",        "j413ap",  0x28, 0x8112, "MacBook Air (M2, 2022)" },
+	{ "Mac14,7",        "j493ap",  0x2A, 0x8112, "MacBook Pro (M2, 13-inch, 2022)" },
+	/* Apple Silicon VMs (supported by Virtualization.framework on macOS 12) */
+	{ "VirtualMac2,1",  "vma2macosap",  0x20, 0xFE00, "Apple Virtual Machine 1" },
 	/* Apple T2 Coprocessor */
 	{ "iBridge2,1",	 "j137ap",   0x0A, 0x8012, "Apple T2 iMacPro1,1 (j137)" },
 	{ "iBridge2,3",	 "j680ap",   0x0B, 0x8012, "Apple T2 MacBookPro15,1 (j680)" },
@@ -237,8 +337,16 @@ static struct irecv_device irecv_devices[] = {
 	{ "iBridge2,8",	 "j140kap",  0x17, 0x8012, "Apple T2 MacBookAir8,1 (j140k)" },
 	{ "iBridge2,10", "j213ap",   0x18, 0x8012, "Apple T2 MacBookPro15,4 (j213)" },
 	{ "iBridge2,12", "j140aap",  0x37, 0x8012, "Apple T2 MacBookAir8,2 (j140a)" },
-	{ "iBridge2,14", "j152f",    0x3A, 0x8012, "Apple T2 MacBookPro16,1 (j152f)" },
-	{ NULL,          NULL,      -1,   -1,     NULL }
+	{ "iBridge2,14", "j152fap",  0x3A, 0x8012, "Apple T2 MacBookPro16,1 (j152f)" },
+	{ "iBridge2,15", "j230kap",  0x3F, 0x8012, "Apple T2 MacBookAir9,1 (j230k)" },
+	{ "iBridge2,16", "j214kap",  0x3E, 0x8012, "Apple T2 MacBookPro16,2 (j214k)" },
+	{ "iBridge2,19", "j185ap",   0x22, 0x8012, "Apple T2 iMac20,1 (j185)" },
+	{ "iBridge2,20", "j185fap",  0x23, 0x8012, "Apple T2 iMac20,2 (j185f)" },
+	{ "iBridge2,21", "j223ap",   0x3B, 0x8012, "Apple T2 MacBookPro16,3 (j223)" },
+	{ "iBridge2,22", "j215ap",   0x38, 0x8012, "Apple T2 MacBookPro16,4 (j215)" },
+	/* Apple Displays */
+	{ "AppleDisplay2,1", "j327ap", 0x22, 0x8030, "Studio Display" },
+	{ NULL,          NULL,         -1,     -1, NULL }
 };
 
 #ifndef USE_DUMMY
@@ -362,7 +470,23 @@ static void _irecv_deinit(void)
 static thread_once_t init_once = THREAD_ONCE_INIT;
 static thread_once_t deinit_once = THREAD_ONCE_INIT;
 
-#ifdef WIN32
+#ifndef HAVE_ATTRIBUTE_CONSTRUCTOR
+  #if defined(__llvm__) || defined(__GNUC__)
+    #define HAVE_ATTRIBUTE_CONSTRUCTOR
+  #endif
+#endif
+
+#ifdef HAVE_ATTRIBUTE_CONSTRUCTOR
+static void __attribute__((constructor)) libirecovery_initialize(void)
+{
+	thread_once(&init_once, _irecv_init);
+}
+
+static void __attribute__((destructor)) libirecovery_deinitialize(void)
+{
+	thread_once(&deinit_once, _irecv_deinit);
+}
+#elif defined(WIN32)
 BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpReserved)
 {
 	switch (dwReason) {
@@ -378,15 +502,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpReserved)
 	return 1;
 }
 #else
-static void __attribute__((constructor)) libirecovery_initialize(void)
-{
-	thread_once(&init_once, _irecv_init);
-}
-
-static void __attribute__((destructor)) libirecovery_deinitialize(void)
-{
-	thread_once(&deinit_once, _irecv_deinit);
-}
+#warning No compiler support for constructor/destructor attributes, some features might not be available.
 #endif
 
 #ifdef HAVE_IOKIT
@@ -655,9 +771,9 @@ typedef struct usb_control_request {
 
 irecv_error_t mobiledevice_openpipes(irecv_client_t client);
 void mobiledevice_closepipes(irecv_client_t client);
-irecv_error_t mobiledevice_connect(irecv_client_t* client, unsigned long long ecid);
+irecv_error_t mobiledevice_connect(irecv_client_t* client, uint64_t ecid);
 
-irecv_error_t mobiledevice_connect(irecv_client_t* client, unsigned long long ecid) {
+irecv_error_t mobiledevice_connect(irecv_client_t* client, uint64_t ecid) {
 	int found = 0;
 	SP_DEVICE_INTERFACE_DATA currentInterface;
 	HDEVINFO usbDevices;
@@ -708,14 +824,17 @@ irecv_error_t mobiledevice_connect(irecv_client_t* client, unsigned long long ec
 			}
 
 			char serial_str[256];
-			char *p = result + strlen(result) - 1;
-			while (p-- && p > result) {
-				if (*p == '\\' && (strncmp(p, "\\usb", 4) == 0)) {
-					break;
-				}
-			}
+
 			serial_str[0] = '\0';
-			if (!p || (sscanf(p, "\\usb#vid_%*04x&pid_%*04x#%s", serial_str) != 1) || (serial_str[0] == '\0')) {
+
+			char *p = result;
+			while ((p = strstr(p, "\\usb"))) {
+				if (sscanf(p, "\\usb#vid_%*04x&pid_%*04x#%s", serial_str) == 1)
+					break;
+				p += 4;
+			}
+
+			if (serial_str[0] == '\0') {
 				mobiledevice_closepipes(_client);
 				continue;
 			}
@@ -790,14 +909,16 @@ irecv_error_t mobiledevice_connect(irecv_client_t* client, unsigned long long ec
 			}
 
 			char serial_str[256];
-			char *p = result + strlen(result) - 1;
-			while (p-- && p > result) {
-				if (*p == '\\' && (strncmp(p, "\\usb", 4) == 0)) {
-					break;
-				}
-			}
 			serial_str[0] = '\0';
-			if (!p || (sscanf(p, "\\usb#vid_%*04x&pid_%*04x#%s", serial_str) != 1) || (serial_str[0] == '\0')) {
+
+			char *p = result;
+			while ((p = strstr(p, "\\usb"))) {
+				if (sscanf(p, "\\usb#vid_%*04x&pid_%*04x#%s", serial_str) == 1)
+					break;
+				p += 4;
+			}
+
+			if (serial_str[0] == '\0') {
 				mobiledevice_closepipes(_client);
 				continue;
 			}
@@ -911,12 +1032,16 @@ static int check_context(irecv_client_t client) {
 
 IRECV_API void irecv_init(void)
 {
+#ifndef USE_DUMMY
 	thread_once(&init_once, _irecv_init);
+#endif
 }
 
 IRECV_API void irecv_exit(void)
 {
+#ifndef USE_DUMMY
 	thread_once(&deinit_once, _irecv_deinit);
+#endif
 }
 
 #ifndef USE_DUMMY
@@ -1200,14 +1325,14 @@ static io_iterator_t iokit_usb_get_iterator_for_pid(UInt16 pid) {
 	iokit_cfdictionary_set_short(matchingDict, CFSTR(kUSBVendorID), kAppleVendorID);
 	iokit_cfdictionary_set_short(matchingDict, CFSTR(kUSBProductID), pid);
 
-	result = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator);
+	result = IOServiceGetMatchingServices(MACH_PORT_NULL, matchingDict, &iterator);
 	if (result != kIOReturnSuccess)
 		return IO_OBJECT_NULL;
 
 	return iterator;
 }
 
-static irecv_error_t iokit_open_with_ecid(irecv_client_t* pclient, unsigned long long ecid) {
+static irecv_error_t iokit_open_with_ecid(irecv_client_t* pclient, uint64_t ecid) {
 
 	io_service_t service, ret_service;
 	io_iterator_t iterator;
@@ -1285,7 +1410,7 @@ static irecv_error_t iokit_open_with_ecid(irecv_client_t* pclient, unsigned long
 #endif
 #endif
 
-IRECV_API irecv_error_t irecv_open_with_ecid(irecv_client_t* pclient, unsigned long long ecid) {
+IRECV_API irecv_error_t irecv_open_with_ecid(irecv_client_t* pclient, uint64_t ecid) {
 #ifdef USE_DUMMY
 	return IRECV_E_UNSUPPORTED;
 #else
@@ -1398,13 +1523,12 @@ IRECV_API irecv_error_t irecv_open_with_ecid(irecv_client_t* pclient, unsigned l
 				}
 
 				*pclient = client;
-
-				libusb_free_device_list(usb_device_list, 1);
-
 				ret = IRECV_E_SUCCESS;
+				break;
 			}
 		}
 	}
+	libusb_free_device_list(usb_device_list, 1);
 #endif
 #else
 	ret = mobiledevice_connect(pclient, ecid);
@@ -1623,7 +1747,7 @@ IRECV_API irecv_error_t irecv_reset(irecv_client_t client) {
 #endif
 }
 
-IRECV_API irecv_error_t irecv_open_with_ecid_and_attempts(irecv_client_t* pclient, unsigned long long ecid, int attempts) {
+IRECV_API irecv_error_t irecv_open_with_ecid_and_attempts(irecv_client_t* pclient, uint64_t ecid, int attempts) {
 #ifdef USE_DUMMY
 	return IRECV_E_UNSUPPORTED;
 #else
@@ -1812,18 +1936,20 @@ static void* _irecv_handle_device_add(void *userdata)
 	LPSTR result = (LPSTR)details->DevicePath;
 	location = win_ctx->location;
 
-	char *p = result + strlen(result) - 1;
-	while (p-- && p > result) {
-		if (*p == '\\' && (strncmp(p, "\\usb", 4) == 0)) {
+	unsigned int pid = 0;
+
+	char *p = result;
+	while ((p = strstr(p, "\\usb"))) {
+		if (sscanf(p, "\\usb#vid_%*04x&pid_%04x#%s", &pid, serial_str) == 2)
 			break;
-		}
+		p += 4;
 	}
 
-	unsigned int pid = 0;
-	if (!p || (sscanf(p, "\\usb#vid_%*04x&pid_%04x#%s", &pid, serial_str) != 2) || (serial_str[0] == '\0')) {
+	if (serial_str[0] == '\0') {
 		debug("%s: ERROR: failed to parse DevicePath?!\n", __func__);
 		return NULL;
 	}
+
 	if (!_irecv_is_recovery_device(p)) {
 		return NULL;
 	}
@@ -2057,16 +2183,32 @@ static int _irecv_usb_hotplug_cb(libusb_context *ctx, libusb_device *device, lib
 #endif /* !HAVE_IOKIT */
 #endif /* !WIN32 */
 
-static void *_irecv_event_handler(void* unused)
+struct _irecv_event_handler_info {
+	cond_t startup_cond;
+	mutex_t startup_mutex;
+};
+
+static void *_irecv_event_handler(void* data)
 {
+	struct _irecv_event_handler_info* info = (struct _irecv_event_handler_info*)data;
 #ifdef WIN32
 	const GUID *guids[] = { &GUID_DEVINTERFACE_DFU, &GUID_DEVINTERFACE_IBOOT, NULL };
 	int running = 1;
+
+	mutex_lock(&(info->startup_mutex));
+	cond_signal(&(info->startup_cond));
+	mutex_unlock(&(info->startup_mutex));
+
 	do {
 		SP_DEVICE_INTERFACE_DATA currentInterface;
 		HDEVINFO usbDevices;
 		DWORD i;
 		int k;
+
+		FOREACH(struct irecv_usb_device_info *devinfo, &devices) {
+			devinfo->alive = 0;
+		} ENDFOREACH
+
 		for (k = 0; guids[k]; k++) {
 			usbDevices = SetupDiGetClassDevs(guids[k], NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
 			if (!usbDevices) {
@@ -2074,9 +2216,6 @@ static void *_irecv_event_handler(void* unused)
 				return NULL;
 			}
 
-			FOREACH(struct irecv_usb_device_info *devinfo, &devices) {
-				devinfo->alive = 0;
-			} ENDFOREACH
 
 			memset(&currentInterface, '\0', sizeof(SP_DEVICE_INTERFACE_DATA));
 			currentInterface.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
@@ -2101,13 +2240,21 @@ static void *_irecv_event_handler(void* unused)
 					free(details);
 					continue;
 				}
+
 				char *p = strrchr(driver, '\\');
 				if (!p) {
 					debug("%s: ERROR: Failed to parse device location\n", __func__);
 					free(details);
 					continue;
 				}
-				uint32_t location = strtoul(p+1, NULL, 10);
+				p++;
+				uint32_t location = 0;
+				if (!*p || strlen(p) < 4) {
+					debug("%s: ERROR: Driver location suffix too short\n", __func__);
+					free(details);
+					continue;
+				}
+				memcpy(&location, p, 4);
 				int found = 0;
 
 				FOREACH(struct irecv_usb_device_info *devinfo, &devices) {
@@ -2148,7 +2295,7 @@ static void *_irecv_event_handler(void* unused)
 #ifdef HAVE_IOKIT
 	kern_return_t kr;
 
-	IONotificationPortRef notifyPort = IONotificationPortCreate(kIOMasterPortDefault);
+	IONotificationPortRef notifyPort = IONotificationPortCreate(MACH_PORT_NULL);
 	CFRunLoopSourceRef runLoopSource = IONotificationPortGetRunLoopSource(notifyPort);
 	iokit_runloop = CFRunLoopGetCurrent();
 	CFRunLoopAddSource(iokit_runloop, runLoopSource, kCFRunLoopDefaultMode);
@@ -2173,6 +2320,10 @@ static void *_irecv_event_handler(void* unused)
 		i++;
 	}
 
+	mutex_lock(&(info->startup_mutex));
+	cond_signal(&(info->startup_cond));
+	mutex_unlock(&(info->startup_mutex));
+
 	CFRunLoopRun();
 
 #else /* !HAVE_IOKIT */
@@ -2180,6 +2331,11 @@ static void *_irecv_event_handler(void* unused)
 	static libusb_hotplug_callback_handle usb_hotplug_cb_handle;
 	libusb_hotplug_register_callback(irecv_hotplug_ctx, LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED | LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT, LIBUSB_HOTPLUG_ENUMERATE, APPLE_VENDOR_ID, LIBUSB_HOTPLUG_MATCH_ANY, 0, _irecv_usb_hotplug_cb, NULL, &usb_hotplug_cb_handle);
 	int running = 1;
+
+	mutex_lock(&(info->startup_mutex));
+	cond_signal(&(info->startup_cond));
+	mutex_unlock(&(info->startup_mutex));
+
 	do {
 		struct timeval tv;
 		tv.tv_sec = tv.tv_usec = 0;
@@ -2198,6 +2354,10 @@ static void *_irecv_event_handler(void* unused)
 	int i, cnt;
 	libusb_device **devs;
 	int running = 1;
+
+	mutex_lock(&(info->startup_mutex));
+	cond_signal(&(info->startup_cond));
+	mutex_unlock(&(info->startup_mutex));
 
 	do {
 		cnt = libusb_get_device_list(irecv_hotplug_ctx, &devs);
@@ -2276,6 +2436,9 @@ IRECV_API irecv_error_t irecv_device_event_subscribe(irecv_device_event_context_
 	mutex_unlock(&listener_mutex);
 
 	if (th_event_handler == THREAD_T_NULL || !thread_alive(th_event_handler)) {
+		struct _irecv_event_handler_info info;
+		cond_init(&info.startup_cond);
+		mutex_init(&info.startup_mutex);
 #ifndef WIN32
 #ifndef HAVE_IOKIT
 		libusb_init(&irecv_hotplug_ctx);
@@ -2283,7 +2446,13 @@ IRECV_API irecv_error_t irecv_device_event_subscribe(irecv_device_event_context_
 #endif
 		collection_init(&devices);
 		mutex_init(&device_mutex);
-		thread_new(&th_event_handler, _irecv_event_handler, NULL);
+		mutex_lock(&info.startup_mutex);
+		if (thread_new(&th_event_handler, _irecv_event_handler, &info) == 0) {
+			cond_wait(&info.startup_cond, &info.startup_mutex);
+		}
+		mutex_unlock(&info.startup_mutex);
+		cond_destroy(&info.startup_cond);
+		mutex_destroy(&info.startup_mutex);
 	}
 
 	*context = _context;
@@ -2305,10 +2474,11 @@ IRECV_API irecv_error_t irecv_device_event_unsubscribe(irecv_device_event_contex
 	int num = collection_count(&listeners);
 	mutex_unlock(&listener_mutex);
 
-	if (num == 0) {
+	if (num == 0 && th_event_handler != THREAD_T_NULL && thread_alive(th_event_handler)) {
 #ifdef HAVE_IOKIT
 		if (iokit_runloop) {
 			CFRunLoopStop(iokit_runloop);
+			iokit_runloop = NULL;
 		}
 #endif
 		thread_join(th_event_handler);
@@ -2417,21 +2587,21 @@ IRECV_API void irecv_set_debug_level(int level) {
 }
 
 #ifndef USE_DUMMY
-static irecv_error_t irecv_send_command_raw(irecv_client_t client, const char* command) {
+static irecv_error_t irecv_send_command_raw(irecv_client_t client, const char* command, uint8_t b_request) {
 	unsigned int length = strlen(command);
 	if (length >= 0x100) {
 		length = 0xFF;
 	}
 
 	if (length > 0) {
-		irecv_usb_control_transfer(client, 0x40, 0, 0, 0, (unsigned char*) command, length + 1, USB_TIMEOUT);
+		irecv_usb_control_transfer(client, 0x40, b_request, 0, 0, (unsigned char*) command, length + 1, USB_TIMEOUT);
 	}
 
 	return IRECV_E_SUCCESS;
 }
 #endif
 
-IRECV_API irecv_error_t irecv_send_command(irecv_client_t client, const char* command) {
+IRECV_API irecv_error_t irecv_send_command_breq(irecv_client_t client, const char* command, uint8_t b_request) {
 #ifdef USE_DUMMY
 	return IRECV_E_UNSUPPORTED;
 #else
@@ -2455,7 +2625,7 @@ IRECV_API irecv_error_t irecv_send_command(irecv_client_t client, const char* co
 		}
 	}
 
-	error = irecv_send_command_raw(client, command);
+	error = irecv_send_command_raw(client, command, b_request);
 	if (error != IRECV_E_SUCCESS) {
 		debug("Failed to send command %s\n", command);
 		if (error != IRECV_E_PIPE)
@@ -2473,6 +2643,10 @@ IRECV_API irecv_error_t irecv_send_command(irecv_client_t client, const char* co
 
 	return IRECV_E_SUCCESS;
 #endif
+}
+
+IRECV_API irecv_error_t irecv_send_command(irecv_client_t client, const char* command) {
+	return irecv_send_command_breq(client, command, 0);
 }
 
 IRECV_API irecv_error_t irecv_send_file(irecv_client_t client, const char* filename, int dfu_notify_finished) {
@@ -2756,7 +2930,7 @@ IRECV_API irecv_error_t irecv_getenv(irecv_client_t client, const char* variable
 
 	memset(command, '\0', sizeof(command));
 	snprintf(command, sizeof(command)-1, "getenv %s", variable);
-	irecv_error_t error = irecv_send_command_raw(client, command);
+	irecv_error_t error = irecv_send_command_raw(client, command, 0);
 	if(error == IRECV_E_PIPE) {
 		return IRECV_E_SUCCESS;
 	}
@@ -2869,8 +3043,8 @@ IRECV_API irecv_error_t irecv_trigger_limera1n_exploit(irecv_client_t client) {
 	// which can be accomplished by sending on another thread.
 
 	void *args[2] = { client->handle, &req };
-	pthread_t thread;
-	pthread_create(&thread, NULL, iokit_limera1n_usb_submit_request, args);
+	THREAD_T thread;
+	thread_new(&thread, iokit_limera1n_usb_submit_request, args);
 
 	usleep(5 * 1000);
 	result = (*client->handle)->USBDeviceAbortPipeZero(client->handle);
@@ -2930,7 +3104,7 @@ IRECV_API irecv_error_t irecv_saveenv(irecv_client_t client) {
 #ifdef USE_DUMMY
 	return IRECV_E_UNSUPPORTED;
 #else
-	irecv_error_t error = irecv_send_command_raw(client, "saveenv");
+	irecv_error_t error = irecv_send_command_raw(client, "saveenv", 0);
 	if(error != IRECV_E_SUCCESS) {
 		return error;
 	}
@@ -2954,7 +3128,31 @@ IRECV_API irecv_error_t irecv_setenv(irecv_client_t client, const char* variable
 
 	memset(command, '\0', sizeof(command));
 	snprintf(command, sizeof(command)-1, "setenv %s %s", variable, value);
-	irecv_error_t error = irecv_send_command_raw(client, command);
+	irecv_error_t error = irecv_send_command_raw(client, command, 0);
+	if(error != IRECV_E_SUCCESS) {
+		return error;
+	}
+
+	return IRECV_E_SUCCESS;
+#endif
+}
+
+IRECV_API irecv_error_t irecv_setenv_np(irecv_client_t client, const char* variable, const char* value) {
+#ifdef USE_DUMMY
+	return IRECV_E_UNSUPPORTED;
+#else
+	char command[256];
+
+	if (check_context(client) != IRECV_E_SUCCESS)
+		return IRECV_E_NO_DEVICE;
+
+	if(variable == NULL || value == NULL) {
+		return IRECV_E_UNKNOWN_ERROR;
+	}
+
+	memset(command, '\0', sizeof(command));
+	snprintf(command, sizeof(command)-1, "setenvnp %s %s", variable, value);
+	irecv_error_t error = irecv_send_command_raw(client, command, 0);
 	if(error != IRECV_E_SUCCESS) {
 		return error;
 	}
@@ -2967,7 +3165,7 @@ IRECV_API irecv_error_t irecv_reboot(irecv_client_t client) {
 #ifdef USE_DUMMY
 	return IRECV_E_UNSUPPORTED;
 #else
-	irecv_error_t error = irecv_send_command_raw(client, "reboot");
+	irecv_error_t error = irecv_send_command_raw(client, "reboot", 0);
 	if(error != IRECV_E_SUCCESS) {
 		return error;
 	}
@@ -3117,6 +3315,9 @@ IRECV_API irecv_error_t irecv_devices_get_device_by_client(irecv_client_t client
 #else
 	int i = 0;
 
+	if (!client || !device)
+		return IRECV_E_INVALID_INPUT;
+
 	*device = NULL;
 
 	if (client->device_info.cpid == 0) {
@@ -3137,6 +3338,9 @@ IRECV_API irecv_error_t irecv_devices_get_device_by_client(irecv_client_t client
 IRECV_API irecv_error_t irecv_devices_get_device_by_product_type(const char* product_type, irecv_device_t* device) {
 	int i = 0;
 
+	if (!product_type || !device)
+		return IRECV_E_INVALID_INPUT;
+
 	*device = NULL;
 
 	for (i = 0; irecv_devices[i].product_type != NULL; i++) {
@@ -3152,16 +3356,13 @@ IRECV_API irecv_error_t irecv_devices_get_device_by_product_type(const char* pro
 IRECV_API irecv_error_t irecv_devices_get_device_by_hardware_model(const char* hardware_model, irecv_device_t* device) {
 	int i = 0;
 
+	if (!hardware_model || !device)
+		return IRECV_E_INVALID_INPUT;
+
 	*device = NULL;
 
-	/* lowercase hardware_model string for proper lookup */
-	char model[8];
-	strcpy(model, hardware_model);
-	char *p = model;
-	for (; *p; ++p) *p = tolower(*p);
-
 	for (i = 0; irecv_devices[i].hardware_model != NULL; i++) {
-		if (!strcmp(model, irecv_devices[i].hardware_model)) {
+		if (!strcasecmp(hardware_model, irecv_devices[i].hardware_model)) {
 			*device = &irecv_devices[i];
 			return IRECV_E_SUCCESS;
 		}
@@ -3183,7 +3384,7 @@ IRECV_API irecv_client_t irecv_reconnect(irecv_client_t client, int initial_paus
 	irecv_event_cb_t postcommand_callback = client->postcommand_callback;
 	irecv_event_cb_t disconnected_callback = client->disconnected_callback;
 
-	unsigned long long ecid = client->device_info.ecid;
+	uint64_t ecid = client->device_info.ecid;
 
 	if (check_context(client) == IRECV_E_SUCCESS) {
 		irecv_close(client);

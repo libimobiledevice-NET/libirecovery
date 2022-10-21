@@ -94,7 +94,7 @@ struct irecv_device_info {
 	unsigned int cpfm;
 	unsigned int scep;
 	unsigned int bdid;
-	unsigned long long ecid;
+	uint64_t ecid;
 	unsigned int ibfl;
 	char* srnm;
 	char* imei;
@@ -127,8 +127,8 @@ IRECV_API void irecv_init(void); /* deprecated: libirecovery has constructor now
 IRECV_API void irecv_exit(void); /* deprecated: libirecovery has constructor now */
 
 /* device connectivity */
-IRECV_API irecv_error_t irecv_open_with_ecid(irecv_client_t* client, unsigned long long ecid);
-IRECV_API irecv_error_t irecv_open_with_ecid_and_attempts(irecv_client_t* pclient, unsigned long long ecid, int attempts);
+IRECV_API irecv_error_t irecv_open_with_ecid(irecv_client_t* client, uint64_t ecid);
+IRECV_API irecv_error_t irecv_open_with_ecid_and_attempts(irecv_client_t* pclient, uint64_t ecid, int attempts);
 IRECV_API irecv_error_t irecv_reset(irecv_client_t client);
 IRECV_API irecv_error_t irecv_close(irecv_client_t client);
 IRECV_API irecv_client_t irecv_reconnect(irecv_client_t client, int initial_pause);
@@ -158,6 +158,7 @@ IRECV_API irecv_error_t irecv_event_unsubscribe(irecv_client_t client, irecv_eve
 /* I/O */
 IRECV_API irecv_error_t irecv_send_file(irecv_client_t client, const char* filename, int dfu_notify_finished);
 IRECV_API irecv_error_t irecv_send_command(irecv_client_t client, const char* command);
+IRECV_API irecv_error_t irecv_send_command_breq(irecv_client_t client, const char* command, uint8_t b_request);
 IRECV_API irecv_error_t irecv_send_buffer(irecv_client_t client, unsigned char* buffer, unsigned long length, int dfu_notify_finished);
 IRECV_API irecv_error_t irecv_recv_buffer(irecv_client_t client, char* buffer, unsigned long length);
 
@@ -165,6 +166,7 @@ IRECV_API irecv_error_t irecv_recv_buffer(irecv_client_t client, char* buffer, u
 IRECV_API irecv_error_t irecv_saveenv(irecv_client_t client);
 IRECV_API irecv_error_t irecv_getenv(irecv_client_t client, const char* variable, char** value);
 IRECV_API irecv_error_t irecv_setenv(irecv_client_t client, const char* variable, const char* value);
+IRECV_API irecv_error_t irecv_setenv_np(irecv_client_t client, const char* variable, const char* value);
 IRECV_API irecv_error_t irecv_reboot(irecv_client_t client);
 IRECV_API irecv_error_t irecv_getret(irecv_client_t client, unsigned int* value);
 
