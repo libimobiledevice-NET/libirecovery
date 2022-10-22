@@ -32,6 +32,8 @@
 #ifndef _MSC_VER
 #include <unistd.h>
 #include <sys/stat.h>
+#else
+#define strcasecmp _stricmp
 #endif
 
 #include <libimobiledevice-glue/collection.h>
