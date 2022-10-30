@@ -180,6 +180,9 @@ IRECV_API irecv_error_t irecv_devices_get_device_by_client(irecv_client_t client
 IRECV_API irecv_error_t irecv_devices_get_device_by_product_type(const char* product_type, irecv_device_t* device);
 IRECV_API irecv_error_t irecv_devices_get_device_by_hardware_model(const char* hardware_model, irecv_device_t* device);
 
+/* C# marshalling helpers */
+IRECV_API int irecv_devices_get_all_count(void);
+
 #ifdef __cplusplus
 }
 #endif

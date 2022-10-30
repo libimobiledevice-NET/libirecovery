@@ -3311,6 +3311,10 @@ IRECV_API irecv_device_t irecv_devices_get_all(void) {
 	return irecv_devices;
 }
 
+IRECV_API int irecv_devices_get_all_count(void) {
+	return sizeof(irecv_devices) / sizeof(irecv_devices[0]);
+}
+
 IRECV_API irecv_error_t irecv_devices_get_device_by_client(irecv_client_t client, irecv_device_t* device) {
 #ifdef USE_DUMMY
 	return IRECV_E_UNSUPPORTED;
