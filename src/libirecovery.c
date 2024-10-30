@@ -30,10 +30,12 @@
 #include <inttypes.h>
 #include <ctype.h>
 #ifndef _MSC_VER
-#include <unistd.h>
-#include <sys/stat.h>
+	#include <unistd.h>
+	#include <sys/stat.h>
 #else
-#define strcasecmp _stricmp
+	#define strcasecmp _stricmp
+	#define fseeko _fseeki64
+	#define ftello _ftelli64
 #endif
 
 #include <libimobiledevice-glue/collection.h>
@@ -74,11 +76,6 @@
 #endif
 
 #include "libirecovery.h"
-
-#ifdef _MSC_VER
-#define fseeko _fseeki64
-#define ftello _ftelli64
-#endif
 
 struct irecv_client_private {
 	int debug;

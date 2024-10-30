@@ -21,16 +21,6 @@
 #ifndef LIBIRECOVERY_H
 #define LIBIRECOVERY_H
 
-#ifdef WIN32
-#define IRECV_API __declspec( dllexport )
-#else
-#ifdef HAVE_FVISIBILITY
-#define IRECV_API __attribute__((visibility("default")))
-#else
-#define IRECV_API
-#endif
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
