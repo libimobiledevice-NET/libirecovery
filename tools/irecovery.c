@@ -2,7 +2,7 @@
  * irecovery.c
  * Software frontend for iBoot/iBSS communication with iOS devices
  *
- * Copyright (c) 2012-2020 Nikias Bassen <nikias@gmx.li>
+ * Copyright (c) 2012-2023 Nikias Bassen <nikias@gmx.li>
  * Copyright (c) 2012-2015 Martin Szulecki <martin.szulecki@libimobiledevice.org>
  * Copyright (c) 2010-2011 Chronic-Dev Team
  * Copyright (c) 2010-2011 Joshua Hill
@@ -54,7 +54,7 @@
 #endif
 
 #define FILE_HISTORY_PATH ".irecovery"
-#define debug(...) if(verbose) fprintf(stderr, __VA_ARGS__)
+#define debug(...) if (verbose) fprintf(stderr, __VA_ARGS__)
 
 enum {
 	kNoAction,
@@ -79,7 +79,8 @@ int progress_cb(irecv_client_t client, const irecv_event_t* event);
 int precommand_cb(irecv_client_t client, const irecv_event_t* event);
 int postcommand_cb(irecv_client_t client, const irecv_event_t* event);
 
-static void shell_usage() {
+static void shell_usage()
+{
 	printf("Usage:\n");
 	printf("  /upload FILE\t\tsend FILE to device\n");
 	printf("  /limera1n [FILE]\trun limera1n exploit and send optional payload from FILE\n");
@@ -88,7 +89,8 @@ static void shell_usage() {
 	printf("  /exit\t\t\texit interactive shell\n");
 }
 
-static const char* mode_to_str(int mode) {
+static const char* mode_to_str(int mode)
+{
 	switch (mode) {
 		case IRECV_K_RECOVERY_MODE_1:
 		case IRECV_K_RECOVERY_MODE_2:
@@ -99,6 +101,9 @@ static const char* mode_to_str(int mode) {
 		case IRECV_K_DFU_MODE:
 			return "DFU";
 			break;
+		case IRECV_K_PORT_DFU_MODE:
+			return "Port DFU";
+			break;
 		case IRECV_K_WTF_MODE:
 			return "WTF";
 			break;
@@ -108,7 +113,8 @@ static const char* mode_to_str(int mode) {
 	}
 }
 
-static void buffer_read_from_filename(const char *filename, char **buffer, uint64_t *length) {
+static void buffer_read_from_filename(const char *filename, char **buffer, uint64_t *length)
+{
 	FILE *f;
 	uint64_t size;
 
@@ -187,7 +193,14 @@ static void print_device_info(irecv_client_t client)
 
 	ret = irecv_get_mode(client, &mode);
 	if (ret == IRECV_E_SUCCESS) {
-		printf("MODE: %s\n", mode_to_str(mode));
+		switch (devinfo->pid) {
+			case 0x1881:
+				printf("MODE: DFU via Debug USB (KIS)\n");
+				break;
+			default:
+				printf("MODE: %s\n", mode_to_str(mode));
+				break;
+		}
 	}
 
 	irecv_devices_get_device_by_client(client, &device);
@@ -198,7 +211,8 @@ static void print_device_info(irecv_client_t client)
 	}
 }
 
-static void print_devices() {
+static void print_devices()
+{
 	struct irecv_device *devices = irecv_devices_get_all();
 	struct irecv_device *device = NULL;
 	int i = 0;
@@ -220,7 +234,8 @@ static int _is_breq_command(const char* cmd)
 	);
 }
 
-static void parse_command(irecv_client_t client, unsigned char* command, unsigned int size) {
+static void parse_command(irecv_client_t client, unsigned char* command, unsigned int size)
+{
 	char* cmd = strdup((char*)command);
 	char* action = strtok(cmd, " ");
 
@@ -265,16 +280,19 @@ static void parse_command(irecv_client_t client, unsigned char* command, unsigne
 	free(action);
 }
 
-static void load_command_history() {
+static void load_command_history()
+{
 	read_history(FILE_HISTORY_PATH);
 }
 
-static void append_command_to_history(char* cmd) {
+static void append_command_to_history(char* cmd)
+{
 	add_history(cmd);
 	write_history(FILE_HISTORY_PATH);
 }
 
-static void init_shell(irecv_client_t client) {
+static void init_shell(irecv_client_t client)
+{
 	irecv_error_t error = 0;
 	load_command_history();
 	irecv_event_subscribe(client, IRECV_PROGRESS, &progress_cb, NULL);
@@ -305,7 +323,8 @@ static void init_shell(irecv_client_t client) {
 	}
 }
 
-int received_cb(irecv_client_t client, const irecv_event_t* event) {
+int received_cb(irecv_client_t client, const irecv_event_t* event)
+{
 	if (event->type == IRECV_RECEIVED) {
 		int i = 0;
 		int size = event->size;
@@ -318,7 +337,8 @@ int received_cb(irecv_client_t client, const irecv_event_t* event) {
 	return 0;
 }
 
-int precommand_cb(irecv_client_t client, const irecv_event_t* event) {
+int precommand_cb(irecv_client_t client, const irecv_event_t* event)
+{
 	if (event->type == IRECV_PRECOMMAND) {
 		if (event->data[0] == '/') {
 			parse_command(client, (unsigned char*)event->data, event->size);
@@ -329,7 +349,8 @@ int precommand_cb(irecv_client_t client, const irecv_event_t* event) {
 	return 0;
 }
 
-int postcommand_cb(irecv_client_t client, const irecv_event_t* event) {
+int postcommand_cb(irecv_client_t client, const irecv_event_t* event)
+{
 	char* value = NULL;
 	char* action = NULL;
 	char* command = NULL;
@@ -361,7 +382,8 @@ int postcommand_cb(irecv_client_t client, const irecv_event_t* event) {
 	return 0;
 }
 
-int progress_cb(irecv_client_t client, const irecv_event_t* event) {
+int progress_cb(irecv_client_t client, const irecv_event_t* event)
+{
 	if (event->type == IRECV_PROGRESS) {
 		print_progress_bar(event->progress);
 	}
@@ -369,21 +391,22 @@ int progress_cb(irecv_client_t client, const irecv_event_t* event) {
 	return 0;
 }
 
-void print_progress_bar(double progress) {
+void print_progress_bar(double progress)
+{
 	int i = 0;
 
-	if(progress < 0) {
+	if (progress < 0) {
 		return;
 	}
 
-	if(progress > 100) {
+	if (progress > 100) {
 		progress = 100;
 	}
 
 	printf("\r[");
 
-	for(i = 0; i < 50; i++) {
-		if(i < progress / 2) {
+	for (i = 0; i < 50; i++) {
+		if (i < progress / 2) {
 			printf("=");
 		} else {
 			printf(" ");
@@ -394,12 +417,13 @@ void print_progress_bar(double progress) {
 
 	fflush(stdout);
 
-	if(progress == 100) {
+	if (progress == 100) {
 		printf("\n");
 	}
 }
 
-static void print_usage(int argc, char **argv) {
+static void print_usage(int argc, char **argv)
+{
 	char *name = NULL;
 	name = strrchr(argv[0], '/');
 	printf("Usage: %s [OPTIONS]\n", (name ? name + 1: argv[0]));
@@ -426,7 +450,8 @@ static void print_usage(int argc, char **argv) {
 	printf("Bug Reports: <" PACKAGE_BUGREPORT ">\n");
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
 	static struct option longopts[] = {
 		{ "ecid",    required_argument, NULL, 'i' },
 		{ "command", required_argument, NULL, 'c' },
@@ -573,6 +598,8 @@ int main(int argc, char* argv[]) {
 	if (device)
 		debug("Connected to %s, model %s, cpid 0x%04x, bdid 0x%02x\n", device->product_type, device->hardware_model, device->chip_id, device->board_id);
 
+	const struct irecv_device_info *devinfo = irecv_get_device_info(client);
+
 	switch (action) {
 		case kResetDevice:
 			irecv_reset(client);
@@ -580,11 +607,15 @@ int main(int argc, char* argv[]) {
 
 		case kSendFile:
 			irecv_event_subscribe(client, IRECV_PROGRESS, &progress_cb, NULL);
-			error = irecv_send_file(client, argument, 1);
+			error = irecv_send_file(client, argument, IRECV_SEND_OPT_DFU_NOTIFY_FINISH);
 			debug("%s\n", irecv_strerror(error));
 			break;
 
 		case kSendCommand:
+			if (devinfo->pid == 0x1881) {
+				printf("Shell is not available in Debug USB (KIS) mode.\n");
+				break;
+			}
 			if (_is_breq_command(argument)) {
 				error = irecv_send_command_breq(client, argument, 1);
 			} else {
@@ -594,6 +625,10 @@ int main(int argc, char* argv[]) {
 			break;
 
 		case kSendExploit:
+			if (devinfo->pid == 0x1881) {
+				printf("Shell is not available in Debug USB (KIS) mode.\n");
+				break;
+			}
 			if (argument != NULL) {
 				irecv_event_subscribe(client, IRECV_PROGRESS, &progress_cb, NULL);
 				error = irecv_send_file(client, argument, 0);
@@ -607,16 +642,24 @@ int main(int argc, char* argv[]) {
 			break;
 
 		case kStartShell:
+			if (devinfo->pid == 0x1881) {
+				printf("This feature is not supported in Debug USB (KIS) mode.\n");
+				break;
+			}
 			init_shell(client);
 			break;
 
 		case kSendScript:
+			if (devinfo->pid == 0x1881) {
+				printf("This feature is not supported in Debug USB (KIS) mode.\n");
+				break;
+			}
 			buffer_read_from_filename(argument, &buffer, &buffer_length);
 			if (buffer) {
 				buffer[buffer_length] = '\0';
 
 				error = irecv_execute_script(client, buffer);
-				if(error != IRECV_E_SUCCESS) {
+				if (error != IRECV_E_SUCCESS) {
 					debug("%s\n", irecv_strerror(error));
 				}
 
@@ -626,12 +669,20 @@ int main(int argc, char* argv[]) {
 			}
 			break;
 
-		case kShowMode:
+		case kShowMode: {
 			irecv_get_mode(client, &mode);
-			printf("%s Mode\n", mode_to_str(mode));
+			printf("%s Mode", mode_to_str(mode));
+			if (devinfo->pid == 0x1881) {
+				printf(" via Debug USB (KIS)");
+			}
+			printf("\n");
 			break;
-
+		}
 		case kRebootToNormalMode:
+			if (devinfo->pid == 0x1881) {
+				printf("This feature is not supported in Debug USB (KIS) mode.\n");
+				break;
+			}
 			error = irecv_setenv(client, "auto-boot", "true");
 			if (error != IRECV_E_SUCCESS) {
 				debug("%s\n", irecv_strerror(error));
