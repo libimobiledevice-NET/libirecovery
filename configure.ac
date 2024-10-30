@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.68)
-AC_INIT([libirecovery], [1.0.1], [https://github.com/libimobiledevice/libirecovery/issues],, [https://libimobiledevice.org])
+AC_INIT([libirecovery], [m4_esyscmd(./git-version-gen $RELEASE_VERSION)], [https://github.com/libimobiledevice/libirecovery/issues], [], [https://libimobiledevice.org])
 AM_INIT_AUTOMAKE([dist-bzip2 no-dist-gzip check-news])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES])
 AC_CONFIG_SRCDIR([src/])
@@ -15,11 +15,11 @@ dnl libtool versioning
 #                 changes to the signature and the semantic)
 #  ? :+1 : ?   == just internal changes
 # CURRENT : REVISION : AGE
-LIBIRECOVERY_SO_VERSION=3:0:0
+LIBIRECOVERY_SO_VERSION=5:1:0
 
 dnl Minimum package versions
 LIBUSB_VERSION=1.0.3
-LIMD_GLUE_VERSION=1.0.0
+LIMD_GLUE_VERSION=1.2.0
 
 AC_SUBST(LIBIRECOVERY_SO_VERSION)
 AC_SUBST(LIMD_GLUE_VERSION)
@@ -46,11 +46,6 @@ AC_TYPE_UINT8_T
 
 # Checks for library functions.
 AC_CHECK_FUNCS([strdup strerror strcasecmp strndup malloc realloc calloc])
-
-# Checks for libraries.
-AC_CHECK_HEADERS([readline/readline.h], [],
-	[AC_MSG_ERROR([Please install readline development headers])]
-)
 
 # Check additional platform flags
 AC_MSG_CHECKING([for platform-specific build settings])
@@ -100,6 +95,19 @@ if test "$ac_cv_attribute_constructor" = "yes"; then
   AC_DEFINE(HAVE_ATTRIBUTE_CONSTRUCTOR, 1, [Define if the C compiler supports constructor/destructor attributes])
 fi
 
+AC_ARG_WITH([tools],
+	[AS_HELP_STRING([--with-tools], [Build irecovery tools. (requires readline) [default=yes]])],
+	[],
+	[with_tools=yes])
+
+AS_IF([test "x$with_tools" = "xyes"], [
+	AC_DEFINE(BUILD_TOOLS, 1, [Define if we are building irecovery tools])
+	AC_CHECK_HEADERS([readline/readline.h], [],
+		[AC_MSG_ERROR([Please install readline development headers])]
+	)]
+)
+AM_CONDITIONAL(BUILD_TOOLS, test "x$with_tools" = "xyes")
+
 AC_ARG_WITH([dummy],
 	[AS_HELP_STRING([--with-dummy], [Use no USB driver at all [default=no]. This is only useful if you just want to query the device list by product type or hardware model. All other operations are no-ops or will return IRECV_E_UNSUPPORTED.])],
 	[],
@@ -133,13 +141,13 @@ AS_IF([test "x$with_dummy" = "xyes"], [
 ])
 
 AS_COMPILER_FLAGS(GLOBAL_CFLAGS, "-Wall -Wextra -Wmissing-declarations -Wredundant-decls -Wshadow -Wpointer-arith -Wwrite-strings -Wswitch-default -Wno-unused-parameter -fvisibility=hidden")
+
+if test "x$enable_static" = "xyes" -a "x$enable_shared" = "xno"; then
+	GLOBAL_CFLAGS+=" -DIRECV_STATIC"
+fi
+
 AC_SUBST(GLOBAL_CFLAGS)
 AC_SUBST(GLOBAL_LDFLAGS)
-
-case "$GLOBAL_CFLAGS" in
-	*-fvisibility=hidden*)
-		AC_DEFINE([HAVE_FVISIBILITY], [1], [Define if compiled with -fvisibility=hidden])
-esac
 
 # check for large file support
 AC_SYS_LARGEFILE
@@ -203,6 +211,7 @@ AC_CONFIG_FILES([
 Makefile
 src/Makefile
 src/libirecovery-1.0.pc
+udev/39-libirecovery.rules
 include/Makefile
 tools/Makefile
 udev/Makefile
