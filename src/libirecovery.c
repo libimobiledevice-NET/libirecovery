@@ -36,6 +36,7 @@
 	#define strcasecmp _stricmp
 	#define fseeko _fseeki64
 	#define ftello _ftelli64
+	#define usleep(x) Sleep(x/1000)
 #endif
 
 #include <libimobiledevice-glue/collection.h>
