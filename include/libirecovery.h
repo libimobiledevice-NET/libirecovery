@@ -122,7 +122,7 @@ typedef struct {
 typedef struct irecv_client_private irecv_client_private;
 typedef irecv_client_private* irecv_client_t;
 
-enum {
+enum irecv_send_options {
 	IRECV_SEND_OPT_NONE              = 0,
 	IRECV_SEND_OPT_DFU_NOTIFY_FINISH = (1 << 0),
 	IRECV_SEND_OPT_DFU_FORCE_ZLP     = (1 << 1),
