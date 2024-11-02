@@ -37,6 +37,8 @@
 	#define fseeko _fseeki64
 	#define ftello _ftelli64
 	#define usleep(x) Sleep(x/1000)
+	#define stat _stat
+	#include <sys/stat.h>
 #endif
 
 #include <libimobiledevice-glue/collection.h>
@@ -3192,15 +3194,11 @@ irecv_error_t irecv_send_file(irecv_client_t client, const char* filename, unsig
 		return IRECV_E_FILE_NOT_FOUND;
 	}
 
-#ifdef WIN32
-	DWORD length = GetFileSize(file, NULL);
-#else
 	struct stat fst;
 	if (fstat(fileno(file), &fst) < 0) {
 		return IRECV_E_UNKNOWN_ERROR;
 	}
 	size_t length = fst.st_size;
-#endif
 
 	char* buffer = (char*)malloc(length);
 	if (buffer == NULL) {
