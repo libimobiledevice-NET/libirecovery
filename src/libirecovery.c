@@ -29,16 +29,15 @@
 #include <string.h>
 #include <inttypes.h>
 #include <ctype.h>
+#include <sys/stat.h>
 #ifndef _MSC_VER
 	#include <unistd.h>
-	#include <sys/stat.h>
 #else
 	#define strcasecmp _stricmp
 	#define fseeko _fseeki64
 	#define ftello _ftelli64
 	#define usleep(x) Sleep(x/1000)
 	#define stat _stat
-	#include <sys/stat.h>
 #endif
 
 #include <libimobiledevice-glue/collection.h>
