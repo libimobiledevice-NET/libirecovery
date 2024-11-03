@@ -33,11 +33,7 @@
 #ifndef _MSC_VER
 	#include <unistd.h>
 #else
-	#define strcasecmp _stricmp
-	#define fseeko _fseeki64
-	#define ftello _ftelli64
 	#define usleep(x) Sleep(x/1000)
-	#define stat _stat
 #endif
 
 #include <libimobiledevice-glue/collection.h>
